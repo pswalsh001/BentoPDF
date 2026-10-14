@@ -1,17 +1,17 @@
 [package]
-name = "app"
+name = "bentopdf"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Desktop wrapper for BentoPDF"
+authors = ["Patrick"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/pswalsh001/BentoPDF"
 edition = "2024"
 rust-version = "1.90"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "app_lib"
+name = "bentopdf_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -24,4 +24,5 @@ log = "0.4"
 tauri = { version = "2.12.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
 percent-encoding = "2"
