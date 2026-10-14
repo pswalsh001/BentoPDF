@@ -1,6 +1,11 @@
-const FONT_CDN =
-  import.meta.env.VITE_EMBEDPDF_FONTS_URL ||
-  'https://cdn.jsdelivr.net/npm/@embedpdf';
+// The viewer fetches fallback fonts from inside a blob worker, where a
+// site-relative path cannot resolve, so a self-hosted path is made absolute.
+const FONT_CDN = import.meta.env.VITE_EMBEDPDF_FONTS_URL
+  ? new URL(
+      import.meta.env.VITE_EMBEDPDF_FONTS_URL,
+      window.location.origin
+    ).href.replace(/\/$/, '')
+  : 'https://cdn.jsdelivr.net/npm/@embedpdf';
 
 const CHARSET = {
   ANSI: 0,
