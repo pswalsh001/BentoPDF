@@ -71,7 +71,16 @@ export const formatBytes = (bytes: number, decimals = 1) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
+export const isDesktopApp = (): boolean =>
+  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
 export const downloadFile = (blob: Blob, filename: string): void => {
+  if (isDesktopApp()) {
+    void import('./desktop-bridge.js').then((bridge) =>
+      bridge.saveFromDesktop(blob, filename)
+    );
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
