@@ -11,6 +11,7 @@ import {
   escapeHtml,
   formatShortcutDisplay,
   formatStars,
+  isDesktopApp,
 } from './utils/helpers.js';
 import {
   initI18n,
@@ -30,6 +31,12 @@ import {
   removeStoredItem,
 } from './utils/safe-storage.js';
 declare const __BRAND_NAME__: string;
+
+if (isDesktopApp()) {
+  void import('./utils/desktop-bridge.js').then((bridge) =>
+    bridge.initDesktopBridge()
+  );
+}
 
 const init = async () => {
   await initI18n();
