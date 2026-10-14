@@ -11,6 +11,7 @@ export interface DocManagerPlugin {
     autoActivate?: boolean;
   }) => void;
   closeDocument: (id: string) => void;
+  getActiveDocumentId: () => string | null;
   saveAsCopy: (id: string) => Promise<Uint8Array>;
 }
 

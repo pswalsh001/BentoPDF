@@ -60,6 +60,19 @@ let docManagerPlugin: DocManagerPlugin | null = null;
 let isViewerInitialized = false;
 let currentFileName = 'document.pdf';
 const fileEntryMap = new Map<string, HTMLElement>();
+// Which uploaded file each open tab holds, so a save is named after (and can
+// be written back to) the tab that is active, not the first file opened.
+const pendingFiles = new Map<string, File>();
+const documentFiles = new Map<string, File>();
+
+function activeDocumentFile(): File | undefined {
+  try {
+    const activeId = docManagerPlugin?.getActiveDocumentId();
+    return activeId ? documentFiles.get(activeId) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function resetViewer() {
   const pdfWrapper = document.getElementById('embed-pdf-wrapper');
@@ -76,6 +89,8 @@ function resetViewer() {
   docManagerPlugin = null;
   isViewerInitialized = false;
   fileEntryMap.clear();
+  pendingFiles.clear();
+  documentFiles.clear();
 }
 
 function removeFileEntry(documentId: string) {
@@ -201,6 +216,7 @@ async function handleFiles(files: FileList) {
 
       docManagerPlugin.onDocumentClosed((data: { id?: string }) => {
         const docId = data?.id || '';
+        documentFiles.delete(docId);
         removeFileEntry(docId);
       });
 
@@ -209,6 +225,11 @@ async function handleFiles(files: FileList) {
           const docId = data?.id;
           const docKey = data?.name;
           if (!docId) return;
+          const openedFile = docKey ? pendingFiles.get(docKey) : undefined;
+          if (openedFile && docKey) {
+            documentFiles.set(docId, openedFile);
+            pendingFiles.delete(docKey);
+          }
           const pendingEntry = fileDisplayArea.querySelector(
             `[data-pending-name="${CSS.escape(docKey)}"]`
           ) as HTMLElement;
@@ -258,6 +279,9 @@ async function handleFiles(files: FileList) {
 
       downloadBtn.onclick = async () => {
         try {
+          // Read before the export starts, so a tab switch during a slow
+          // save cannot pair one tab's contents with another tab's file.
+          const savedFile = activeDocumentFile();
           const exportPlugin = registry.getPlugin('export').provides();
           const arrayBuffer = await exportPlugin.saveAsCopy().toPromise();
           let outBytes = new Uint8Array(arrayBuffer);
@@ -304,7 +328,7 @@ async function handleFiles(files: FileList) {
           const blob = new Blob([new Uint8Array(outBytes)], {
             type: 'application/pdf',
           });
-          downloadFile(blob, currentFileName);
+          downloadFile(blob, savedFile?.name ?? currentFileName, savedFile);
         } catch (err) {
           console.error('Error downloading PDF:', err);
           showAlert('Error', 'Failed to download the edited PDF.');
@@ -347,6 +371,7 @@ function addFileEntries(fileDisplayArea: HTMLElement, files: File[]) {
     fileDiv.className =
       'flex items-center justify-between bg-gray-700 p-3 rounded-lg';
     fileDiv.setAttribute('data-pending-name', makeUniqueFileKey(i, file.name));
+    pendingFiles.set(makeUniqueFileKey(i, file.name), file);
 
     const infoContainer = document.createElement('div');
     infoContainer.className = 'flex flex-col flex-1 min-w-0';
