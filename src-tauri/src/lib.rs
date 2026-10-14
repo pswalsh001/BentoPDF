@@ -30,7 +30,6 @@ const REMOVE_SERVICE_WORKER: &str = r#"
   navigator.serviceWorker
     .getRegistrations()
     .then(function (registrations) {
-      if (registrations.length === 0) return;
       return Promise.all(
         registrations.map(function (r) {
           return r.unregister();
@@ -47,6 +46,7 @@ const REMOVE_SERVICE_WORKER: &str = r#"
           );
         })
         .then(function () {
+          if (registrations.length === 0) return;
           if (sessionStorage.getItem('sw-cleanup-reloaded')) return;
           sessionStorage.setItem('sw-cleanup-reloaded', '1');
           location.reload();
@@ -198,9 +198,42 @@ async fn save_file_as(
   Ok(Some(registry.0.lock().unwrap().register(path).name))
 }
 
+/// Handles a second launch of the app (another PDF double-clicked while it is
+/// already open) inside the running window: the editor adds the file as a
+/// tab, and any other page is replaced by the editor with that file.
+fn open_in_running_window(app: &AppHandle, args: Vec<String>) {
+  let Some(window) = app.get_webview_window("main") else {
+    return;
+  };
+  let _ = window.unminimize();
+  let _ = window.set_focus();
+
+  let Some(path) = launch_file_from_args(args.into_iter().skip(1)) else {
+    return;
+  };
+  let picked = app.state::<Registry>().0.lock().unwrap().register(path);
+  let Ok(mut url) = window.url() else {
+    return;
+  };
+
+  let on_editor = url.path().trim_matches('/') == LAUNCH_FILE_PAGE;
+  if on_editor {
+    let _ = window.emit("desktop-open-file", picked);
+  } else {
+    *app.state::<LaunchFile>().0.lock().unwrap() = Some(picked);
+    url.set_path(LAUNCH_FILE_PAGE);
+    let _ = window.navigate(url);
+  }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    // Must be registered first so a second launch exits before doing
+    // anything else.
+    .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+      open_in_running_window(app, args);
+    }))
     .plugin(tauri_plugin_dialog::init())
     .manage(Registry(Mutex::new(FileRegistry::default())))
     .manage(LaunchFile(Mutex::new(None)))

@@ -74,10 +74,19 @@ export const formatBytes = (bytes: number, decimals = 1) => {
 export const isDesktopApp = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
-export const downloadFile = (blob: Blob, filename: string): void => {
+/**
+ * Hands a finished result to the user. `sourceFile` is the opened file the
+ * result was made from, when the caller knows exactly which one it was; the
+ * desktop wrapper uses it to offer overwriting that file.
+ */
+export const downloadFile = (
+  blob: Blob,
+  filename: string,
+  sourceFile?: File
+): void => {
   if (isDesktopApp()) {
     void import('./desktop-bridge.js').then((bridge) =>
-      bridge.saveFromDesktop(blob, filename)
+      bridge.saveFromDesktop(blob, filename, sourceFile)
     );
     return;
   }

@@ -82,21 +82,26 @@ export function mimeFromName(name: string): string {
 
 /**
  * Decides whether a finished result may replace the file it came from.
- * Overwrite is only offered when a single PDF was opened and the result is a
- * single PDF; anything else goes through a Save As dialog.
+ * Overwrite is only offered for a PDF result whose source PDF is certain:
+ * either the tool named it (`knownSource`, e.g. the editor's active tab) or
+ * it is the only file opened. Anything else goes through a Save As dialog.
  */
 export function chooseSaveMode(
   sources: DesktopSource[],
   blobType: string,
-  filename: string
+  filename: string,
+  knownSource: DesktopSource | null = null
 ): SaveDecision {
   const resultIsPdf =
     blobType === 'application/pdf' ||
     (blobType === '' && extensionOf(filename) === 'pdf');
-  const only = sources.length === 1 ? sources[0] : null;
+  const source = knownSource ?? (sources.length === 1 ? sources[0] : null);
 
-  if (only && resultIsPdf && extensionOf(only.name) === 'pdf') {
-    return { mode: 'ask-overwrite', source: only };
+  if (source && resultIsPdf && extensionOf(source.name) === 'pdf') {
+    return { mode: 'ask-overwrite', source };
   }
-  return { mode: 'save-as', near: sources[sources.length - 1] ?? null };
+  return {
+    mode: 'save-as',
+    near: knownSource ?? sources[sources.length - 1] ?? null,
+  };
 }

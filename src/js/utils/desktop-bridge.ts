@@ -24,6 +24,9 @@ type OverwriteChoice = 'overwrite' | 'save-as' | 'cancel';
 // while this holds exactly one PDF.
 const sources: DesktopSource[] = [];
 
+// Which disk file each File object handed to the page came from.
+const fileSources = new WeakMap<File, DesktopSource>();
+
 function rememberSources(picked: DesktopSource[]): void {
   for (const file of picked) {
     if (!sources.some((source) => source.id === file.id)) sources.push(file);
@@ -40,9 +43,11 @@ async function loadIntoInput(
   const files = await Promise.all(
     wanted.map(async (source) => {
       const bytes = await invoke<ArrayBuffer>('read_file', { id: source.id });
-      return new File([bytes], source.name, {
+      const file = new File([bytes], source.name, {
         type: mimeFromName(source.name),
       });
+      fileSources.set(file, source);
+      return file;
     })
   );
 
@@ -144,10 +149,17 @@ async function saveAs(
 
 export async function saveFromDesktop(
   blob: Blob,
-  filename: string
+  filename: string,
+  sourceFile?: File
 ): Promise<void> {
   try {
-    const decision = chooseSaveMode(sources, blob.type, filename);
+    const knownSource = sourceFile ? fileSources.get(sourceFile) : undefined;
+    const decision = chooseSaveMode(
+      sources,
+      blob.type,
+      filename,
+      knownSource ?? null
+    );
     const bytes = new Uint8Array(await blob.arrayBuffer());
 
     if (decision.mode === 'save-as') {
@@ -190,7 +202,16 @@ async function openLaunchFile(): Promise<void> {
   await invoke('launch_file_opened');
 }
 
+// The footer only holds the website's copyright line and a language menu,
+// and this build ships English alone.
+function hideWebsiteFooter(): void {
+  const style = document.createElement('style');
+  style.textContent = 'footer { display: none !important; }';
+  document.head.append(style);
+}
+
 export function initDesktopBridge(): void {
+  hideWebsiteFooter();
   openLaunchFile().catch((error) =>
     showAlert('Could not open file', String(error))
   );
@@ -213,6 +234,16 @@ export function initDesktopBridge(): void {
     },
     true
   );
+
+  // A PDF opened from Windows while the app is already on the editor: the
+  // editor adds it as another tab.
+  void listen<DesktopSource>('desktop-open-file', ({ payload }) => {
+    const input = fileInputNear(null);
+    if (!input) return;
+    loadIntoInput(input, [payload]).catch((error) =>
+      showAlert('Could not open file', String(error))
+    );
+  });
 
   void listen<DroppedFiles>('desktop-files-dropped', ({ payload }) => {
     const scale = window.devicePixelRatio || 1;

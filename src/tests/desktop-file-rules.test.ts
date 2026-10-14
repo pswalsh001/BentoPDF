@@ -92,6 +92,24 @@ describe('chooseSaveMode', () => {
     });
   });
 
+  it('should offer to overwrite the named source even among several', () => {
+    expect(
+      chooseSaveMode([pdf, otherPdf], 'application/pdf', 'other.pdf', otherPdf)
+    ).toEqual({ mode: 'ask-overwrite', source: otherPdf });
+  });
+
+  it('should not overwrite a named source that is not a PDF', () => {
+    expect(
+      chooseSaveMode([pdf, image], 'application/pdf', 'scan.pdf', image)
+    ).toEqual({ mode: 'save-as', near: image });
+  });
+
+  it('should not overwrite a named source with a non-PDF result', () => {
+    expect(
+      chooseSaveMode([pdf, otherPdf], 'application/zip', 'out.zip', otherPdf)
+    ).toEqual({ mode: 'save-as', near: otherPdf });
+  });
+
   it('should fall back to a plain save dialog when nothing was opened', () => {
     expect(chooseSaveMode([], 'application/pdf', 'new.pdf')).toEqual({
       mode: 'save-as',
