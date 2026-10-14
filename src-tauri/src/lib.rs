@@ -6,12 +6,60 @@ use std::sync::Mutex;
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{AppHandle, DragDropEvent, Emitter, Manager, State, WindowEvent};
+use tauri::{
+  AppHandle, DragDropEvent, Emitter, Manager, State, WebviewUrl,
+  WebviewWindowBuilder, WindowEvent,
+};
 use tauri_plugin_dialog::DialogExt;
 
-use files::{write_atomically, FileRegistry, PickedFile};
+use files::{
+  launch_file_from_args, write_atomically, FileRegistry, PickedFile,
+};
+
+/// The tool a PDF opens in when the app is started with a file.
+const LAUNCH_FILE_PAGE: &str = "edit-pdf";
+
+/// Runs before each page's own scripts. A service worker registered by an
+/// older build (or by the web version's code) can break a page's entry script
+/// when the app starts directly on a tool page, and that script is the only
+/// place page code could clean it up from. So it is removed here, followed by
+/// one reload to get a page served straight from the app.
+const REMOVE_SERVICE_WORKER: &str = r#"
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker
+    .getRegistrations()
+    .then(function (registrations) {
+      if (registrations.length === 0) return;
+      return Promise.all(
+        registrations.map(function (r) {
+          return r.unregister();
+        })
+      )
+        .then(function () {
+          return self.caches ? caches.keys() : [];
+        })
+        .then(function (keys) {
+          return Promise.all(
+            keys.map(function (key) {
+              return caches.delete(key);
+            })
+          );
+        })
+        .then(function () {
+          if (sessionStorage.getItem('sw-cleanup-reloaded')) return;
+          sessionStorage.setItem('sw-cleanup-reloaded', '1');
+          location.reload();
+        });
+    })
+    .catch(function () {});
+})();
+"#;
 
 struct Registry(Mutex<FileRegistry>);
+
+/// The file the app was started with, until the page collects it.
+struct LaunchFile(Mutex<Option<PickedFile>>);
 
 #[derive(Clone, Serialize)]
 struct DroppedFiles {
@@ -72,6 +120,19 @@ async fn pick_files(
       .map(|path| registry.register(path))
       .collect(),
   )
+}
+
+/// The file the app was started with, if the page has not opened it yet.
+#[tauri::command]
+fn launch_file(launch: State<'_, LaunchFile>) -> Option<PickedFile> {
+  launch.0.lock().unwrap().clone()
+}
+
+/// Called by the page once the launch file is loaded, so that returning to
+/// the editor later does not open it a second time.
+#[tauri::command]
+fn launch_file_opened(launch: State<'_, LaunchFile>) {
+  launch.0.lock().unwrap().take();
 }
 
 #[tauri::command]
@@ -142,8 +203,11 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .manage(Registry(Mutex::new(FileRegistry::default())))
+    .manage(LaunchFile(Mutex::new(None)))
     .invoke_handler(tauri::generate_handler![
       pick_files,
+      launch_file,
+      launch_file_opened,
       read_file,
       overwrite_file,
       save_file_as
@@ -183,6 +247,25 @@ pub fn run() {
             .build(),
         )?;
       }
+
+      // Started with a PDF (double-click or "Open with"): go straight to
+      // the editor, which collects the file through `launch_file`.
+      let launch_path = launch_file_from_args(std::env::args().skip(1));
+      let mut window = app
+        .config()
+        .app
+        .windows
+        .first()
+        .cloned()
+        .ok_or("tauri.conf.json defines no window")?;
+      if let Some(path) = launch_path {
+        let picked = app.state::<Registry>().0.lock().unwrap().register(path);
+        *app.state::<LaunchFile>().0.lock().unwrap() = Some(picked);
+        window.url = WebviewUrl::App(LAUNCH_FILE_PAGE.into());
+      }
+      WebviewWindowBuilder::from_config(app.handle(), &window)?
+        .initialization_script(REMOVE_SERVICE_WORKER)
+        .build()?;
       Ok(())
     })
     .run(tauri::generate_context!())

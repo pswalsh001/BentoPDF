@@ -46,6 +46,9 @@ function sendTrustedHostsToSw(target: ServiceWorker | null | undefined) {
 if (isDevelopment) {
   console.log('[Dev Mode] Service Worker registration skipped in development');
   console.log('Service Worker will be active in production builds');
+} else if ('__TAURI_INTERNALS__' in window) {
+  // Desktop wrapper: every asset is bundled in the app, and a cached copy
+  // from an older build would only get in the way.
 } else if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     const swPath = `${import.meta.env.BASE_URL}sw.js`;

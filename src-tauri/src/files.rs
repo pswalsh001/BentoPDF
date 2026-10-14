@@ -45,6 +45,19 @@ impl FileRegistry {
   }
 }
 
+/// Finds the file Windows asked the app to open: the first command-line
+/// argument that is not a flag and names an existing file.
+pub fn launch_file_from_args<I>(args: I) -> Option<PathBuf>
+where
+  I: IntoIterator<Item = String>,
+{
+  args
+    .into_iter()
+    .filter(|arg| !arg.starts_with('-'))
+    .map(PathBuf::from)
+    .find(|path| path.is_file())
+}
+
 /// Replaces `path` with `bytes` by writing a sibling temp file and renaming it
 /// over the original, so a crash mid-write never leaves a truncated file.
 pub fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -111,6 +124,33 @@ mod tests {
   fn an_unregistered_id_has_no_path() {
     let registry = FileRegistry::default();
     assert_eq!(registry.path(1), None);
+  }
+
+  #[test]
+  fn launch_file_is_the_first_existing_file_argument() {
+    let dir = temp_dir("launch");
+    let target = dir.join("form.pdf");
+    fs::write(&target, b"%PDF").unwrap();
+    let args = vec![
+      "--flag".to_string(),
+      dir.join("missing.pdf").to_string_lossy().into_owned(),
+      target.to_string_lossy().into_owned(),
+    ];
+
+    assert_eq!(launch_file_from_args(args), Some(target));
+    fs::remove_dir_all(&dir).unwrap();
+  }
+
+  #[test]
+  fn launch_file_is_none_without_a_file_argument() {
+    let dir = temp_dir("launch-none");
+    let args = vec![
+      "--flag".to_string(),
+      dir.to_string_lossy().into_owned(),
+    ];
+
+    assert_eq!(launch_file_from_args(args), None);
+    fs::remove_dir_all(&dir).unwrap();
   }
 
   #[test]

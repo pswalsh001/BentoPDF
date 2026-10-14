@@ -169,7 +169,32 @@ export async function saveFromDesktop(
   }
 }
 
+function whenPageLoaded(): Promise<void> {
+  if (document.readyState === 'complete') return Promise.resolve();
+  return new Promise((resolve) =>
+    window.addEventListener('load', () => resolve(), { once: true })
+  );
+}
+
+// Opens the file the app was started with (a PDF double-clicked in Windows)
+// in this page's tool, once the tool has wired up its file input.
+// The file stays pending on the Rust side until this page reports it loaded,
+// so a reload in between (see the wrapper's startup script) cannot lose it.
+async function openLaunchFile(): Promise<void> {
+  const launchFile = await invoke<DesktopSource | null>('launch_file');
+  if (!launchFile) return;
+  await whenPageLoaded();
+  const input = fileInputNear(null);
+  if (!input) return;
+  await loadIntoInput(input, [launchFile]);
+  await invoke('launch_file_opened');
+}
+
 export function initDesktopBridge(): void {
+  openLaunchFile().catch((error) =>
+    showAlert('Could not open file', String(error))
+  );
+
   // Capture phase, so this runs before the browser opens its own file chooser
   // and regardless of how a tool triggers its input.
   document.addEventListener(

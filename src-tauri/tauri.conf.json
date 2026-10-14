@@ -11,6 +11,7 @@
     "windows": [
       {
         "title": "BentoPDF",
+        "create": false,
         "width": 1280,
         "height": 860,
         "minWidth": 720,
@@ -43,6 +44,15 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "fileAssociations": [
+      {
+        "ext": ["pdf"],
+        "name": "PDF Document",
+        "description": "PDF Document",
+        "mimeType": "application/pdf",
+        "role": "Editor"
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
